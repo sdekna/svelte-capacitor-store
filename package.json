@@ -1,6 +1,6 @@
 {
   "name": "svelte-capacitor-store",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "src/index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -9,7 +9,12 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "A persistent store using capacitor storage on native devices, and localStorage otherwise.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sdekna/svelte-capacitor-store.git"
+  },
+
   "devDependencies": {
     "@capacitor/core": "^5.2.2",
     "@capacitor/preferences": "^5.0.6",
