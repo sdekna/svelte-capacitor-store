@@ -47,7 +47,6 @@ export function objectStore<T>({ storeName, initialValue, initFunction }: { stor
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
     setTimeout(async () => {
-      if (initFunction) return initFunction()
       let storedValue: T | null
       if (isDeviceNative) {
         storedValue = await getCapacitorStore(storeName) as T | null
@@ -55,9 +54,8 @@ export function objectStore<T>({ storeName, initialValue, initFunction }: { stor
         storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
       }
 
-      if (storedValue) {
-        set(storedValue);
-      }
+      if (storedValue) set(storedValue)
+      if (initFunction) initFunction()
     }, 0);
   }) as Writable<T>;
 
@@ -87,7 +85,6 @@ export function variableStore<T>({ storeName, initialValue, initFunction }: { st
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
     setTimeout(async () => {
-      if (initFunction) return initFunction()
       let storedValue: T | null
       if (isDeviceNative) {
         storedValue = await getCapacitorStore(storeName) as T | null
@@ -95,10 +92,9 @@ export function variableStore<T>({ storeName, initialValue, initFunction }: { st
         storedValue = JSON.parse(localStorage.getItem(storeName) || '[]') as T | null
       }
 
-      if (storedValue !== null && storedValue !== undefined && typeof storedValue === typeof initialValue) {
-        set(storedValue);
-        return storedValue
-      }
+      if (storedValue !== null && storedValue !== undefined && typeof storedValue === typeof initialValue) set(storedValue);
+      if (initFunction) initFunction()
+
     }, 0);
   }) as Writable<T>;
 
