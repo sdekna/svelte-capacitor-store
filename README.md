@@ -1,38 +1,33 @@
-# create-svelte
+### Svelte Capacitor Store
+A simple svelte persistent store that uses capacitor (preferences) storage on native devices, and localStorage otherwise, making it ideal for multi-platform projects.
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/master/packages/create-svelte).
+Unlike localStorage, capacitor storage does not get deleted if device memory runs low, and will be deleted once the app is deleted.
 
-## Creating a project
+The library exports 3 type-safe functions: `arrayStore`, `objectStore`, `variableStore`.
 
-If you're seeing this, you've probably already done this step. Congrats!
+Usage:
+```
+<script lang="ts">
 
-```bash
-# create a new project in the current directory
-npm create svelte@latest
+import { variableStore, arrayStore, objectStore } from 'svelte-capacitor-store';
 
-# create a new project in my-app
-npm create svelte@latest my-app
+const number = variableStore<number>({initialValue: 1, storeName: 'numberStore', initFunction: ()=>{/* optional */}});
+
+const array = arrayStore<string[]>({initialValue: [], storeName: 'arrayStore'});
+
+const object = objectStore<{id: string} | null>({initialValue: null, storeName: 'objectStore'});
+
+</script>
+
+{$number} {$array} {$object}
+```
+The store will only persist data to storage if the submitted value is defined and is of the correct type:
+```
+$number = true // will not persist in storage.
+$number = 0 // will persist in storage.
+$array = 4 | "a" | "[]" | null | undefined // will not persist in storage.
+$array = [] | ["a", "b"] // will persist in storage.
+$array = ["a", 7, "true"] // will persist in storage but will give you a type check warning.
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+I hope this helps, and would love to get feedback/corrections/improvements and any additional features requests.
