@@ -131,7 +131,7 @@ async function getCapacitorStore(key: string) {
     const value = result.value;
     return value ? JSON.parse(value) : null;
   } catch (error) {
-    console.error(`Error at getStore function, key: ${key}. error: ${error}`);
+    // console.error(`Error at getStore function, key: ${key}. error: ${error}`);
     return null
   }
 }
@@ -141,6 +141,6 @@ async function setCapacitorStore({ key, value }: { key: string, value: any }) {
     if (typeof window === 'undefined' || !isDeviceNative) return
     await Preferences.set({ key, value: JSON.stringify(value) });
   } catch (error) {
-    console.error(`Error at setStore function, key: ${key}. error: ${error}`);
+    // console.error(`Error at setStore function, key: ${key}. error: ${error}`);
   }
 }
