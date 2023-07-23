@@ -38,6 +38,16 @@ export function arrayStore<T>({ storeName, initialValue, initFunction }: { store
       if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(initialValue) })
       else localStorage.setItem(storeName, JSON.stringify(initialValue));
     },
+    getValue: async (): Promise<T | null> => {
+      let storedValue: T | null
+      if (isDeviceNative) {
+        storedValue = await getCapacitorStore(storeName) as T | null
+      } else {
+        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
+      }
+
+      return storedValue;
+    }
 
   }
 }
@@ -76,6 +86,16 @@ export function objectStore<T>({ storeName, initialValue, initFunction }: { stor
       if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(initialValue) })
       else localStorage.setItem(storeName, JSON.stringify(initialValue));
     },
+    getValue: async (): Promise<T | null> => {
+      let storedValue: T | null
+      if (isDeviceNative) {
+        storedValue = await getCapacitorStore(storeName) as T | null
+      } else {
+        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
+      }
+
+      return storedValue;
+    }
 
   }
 }
@@ -115,6 +135,17 @@ export function variableStore<T>({ storeName, initialValue, initFunction }: { st
       if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(initialValue) })
       else localStorage.setItem(storeName, JSON.stringify(initialValue));
     },
+
+    getValue: async (): Promise<T | null> => {
+      let storedValue: T | null
+      if (isDeviceNative) {
+        storedValue = await getCapacitorStore(storeName) as T | null
+      } else {
+        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
+      }
+
+      return storedValue;
+    }
 
   }
 }
