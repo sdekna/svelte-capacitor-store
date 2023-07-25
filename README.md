@@ -1,5 +1,6 @@
 ### Svelte Capacitor Store
-Update: v0.0.8 added `objectTestKey` and `regexTest` methods.
+Update: v0.0.81 added `objectTestKey` and `regexTest` methods.
+
 Update: v0.0.7 added `getValue()` async method.
 
 A simple svelte persistent store that uses capacitor (preferences) storage on native devices, and localStorage otherwise, making it ideal for multi-platform projects.
@@ -29,9 +30,9 @@ const number = variableStore<number>({
   initFunction: ()=>{/* optional */}
 });
 
-const email = variableStore<string|null>({
-  initialValue: null,
-  storeName: 'numberStore',
+const email = variableStore<string>({
+  initialValue: "",
+  storeName: 'emailStore',
   regexTest: /^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-]+)(\.[a-zA-Z]{2,5}){1,2}$/
 });
 
