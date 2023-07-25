@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 
 const isDeviceNative = Capacitor.isNativePlatform();
 
-export function arrayStore<T>({ storeName, initialValue, initFunction }: { storeName: string, initialValue: T, initFunction?: () => void }) {
+export function arrayStore<T>({ storeName, initialValue, initFunction, objectTestKey }: { storeName: string, initialValue: T, initFunction?: () => void, objectTestKey?: string }) {
 
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
@@ -23,6 +23,8 @@ export function arrayStore<T>({ storeName, initialValue, initFunction }: { store
 
   subscribe(async (value: T) => {
     if (typeof window === 'undefined' || !value || !Array.isArray(value) || !value.length || !value?.[0]) return
+    if (objectTestKey && !value?.[0]?.[objectTestKey]) return
+
     if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(value) })
     else localStorage.setItem(storeName, JSON.stringify(value));
   });
@@ -52,7 +54,7 @@ export function arrayStore<T>({ storeName, initialValue, initFunction }: { store
   }
 }
 
-export function objectStore<T>({ storeName, initialValue, initFunction }: { storeName: string, initialValue: T, initFunction?: () => void }) {
+export function objectStore<T>({ storeName, initialValue, initFunction, objectTestKey }: { storeName: string, initialValue: T, initFunction?: () => void, objectTestKey?: string }) {
 
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
@@ -71,6 +73,8 @@ export function objectStore<T>({ storeName, initialValue, initFunction }: { stor
 
   subscribe(async (value: T) => {
     if (typeof window === 'undefined' || !value) return
+    if (objectTestKey && !value?.[objectTestKey]) return
+
     if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(value) })
     else localStorage.setItem(storeName, JSON.stringify(value));
   });
@@ -100,7 +104,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction }: { stor
   }
 }
 
-export function variableStore<T>({ storeName, initialValue, initFunction }: { storeName: string, initialValue: T, initFunction?: () => void }) {
+export function variableStore<T>({ storeName, initialValue, initFunction, regexTest }: { storeName: string, initialValue: T, initFunction?: () => void, regexTest?: RegExp }) {
 
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
@@ -109,7 +113,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction }: { st
       if (isDeviceNative) {
         storedValue = await getCapacitorStore(storeName) as T | null
       } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || '[]') as T | null
+        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
       }
 
       if (storedValue !== null && storedValue !== undefined && typeof storedValue === typeof initialValue) set(storedValue);
@@ -120,6 +124,8 @@ export function variableStore<T>({ storeName, initialValue, initFunction }: { st
 
   subscribe(async (value: T) => {
     if (typeof window === 'undefined' || typeof value !== typeof initialValue) return
+    if (regexTest && typeof value === 'string' && !regexTest.test(value)) return
+
     if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(value) })
     else localStorage.setItem(storeName, JSON.stringify(value));
   });
