@@ -4,17 +4,17 @@ import { Capacitor } from '@capacitor/core';
 
 const isDeviceNative = Capacitor.isNativePlatform();
 
-export type ArrayStoreInputType<T> =
-  {
-    storeName: string,
-    initialValue: T,
-    initFunction?: () => void,
-    validationStatement?: (value: T) => boolean
-  }
+export type ArrayStoreInputType<T> = {
+  storeName: string,
+  initialValue: T,
+  initFunction?: () => void,
+  validationStatement?: (value: T) => boolean
+}
 
 export function arrayStore<T>({ storeName, initialValue, initFunction, validationStatement }: ArrayStoreInputType<T>) {
 
   let storeValueInitialized = false
+  let currentStoreValue: T = initialValue
 
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
@@ -34,10 +34,17 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
     }, 0);
   }) as Writable<T>;
 
+  const customUpdate = (callback: (value: T) => T): void => {
+    const newValue = callback(currentStoreValue);
+    customSet(newValue)
+  };
+
   const customSet = (value: T): void => {
     if (typeof window === 'undefined' || !value || !Array.isArray(value) || !value.length || !value?.[0]) return
     if (validationStatement && !validationStatement(value)) return
     set(value);
+    currentStoreValue = value
+
   };
 
   function customSubscribe(callback: (value: T, lastValue: T) => void) {
@@ -60,7 +67,7 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
 
   return {
     subscribe: customSubscribe,
-    update,
+    update: validationStatement ? customUpdate : update,
     set: validationStatement ? customSet : set,
 
     reset: async (): Promise<void> => {
@@ -90,13 +97,13 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
 
 
 
-export type ObjectStoreInputType<T> =
-  {
-    storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean
-  }
+export type ObjectStoreInputType<T> = {
+  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean
+}
 
 export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement }: ObjectStoreInputType<T>) {
   let storeValueInitialized = false
+  let currentStoreValue: T = initialValue
 
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
@@ -117,10 +124,17 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
     }, 0);
   }) as Writable<T>;
 
+  const customUpdate = (callback: (value: T) => T): void => {
+    const newValue = callback(currentStoreValue);
+    customSet(newValue)
+  };
+
   const customSet = (value: T): void => {
+    console.log("customSet", { value })
     if (typeof window === 'undefined' || !value) return
     if (validationStatement && !validationStatement(value)) return
     set(value);
+    currentStoreValue = value
   };
 
   function customSubscribe(callback: (value: T, lastValue: T) => void) {
@@ -144,7 +158,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
   return {
     subscribe: customSubscribe,
-    update,
+    update: validationStatement ? customUpdate : update,
     set: validationStatement ? customSet : set,
 
     reset: async (): Promise<void> => {
@@ -175,11 +189,13 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
 
 
-export type VariableStoreInputType<T> =
-  { storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean }
+export type VariableStoreInputType<T> = {
+  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean
+}
 
 export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement }: VariableStoreInputType<T>) {
   let storeValueInitialized = false
+  let currentStoreValue: T = initialValue
 
   const { subscribe, update, set } = writable(initialValue, () => {
     if (typeof window === 'undefined') return
@@ -200,10 +216,15 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
       if (initFunction) initFunction()
     }, 100);
   }) as Writable<T>;
+  const customUpdate = (callback: (value: T) => T): void => {
+    const newValue = callback(currentStoreValue);
+    customSet(newValue)
+  };
 
   const customSet = (value: T): void => {
     if (typeof window === 'undefined' || (validationStatement && !validationStatement(value))) return
     set(value);
+    currentStoreValue = value
   };
 
   function customSubscribe(callback: (value: T, lastValue: T) => void) {
@@ -227,7 +248,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
 
   return {
     subscribe: customSubscribe,
-    update,
+    update: validationStatement ? customUpdate : update,
     set: validationStatement ? customSet : set,
 
     reset: async (): Promise<void> => {

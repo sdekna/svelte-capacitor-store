@@ -9,7 +9,7 @@ Before using this library, ensure that you have Svelte and Capacitor (if plannin
 
 ### Installation
 
-To use the Custom Store Library, you can install it via npm:
+To use the library, you can install it via npm:
 `npm install svelte-capacitor-store`
 or install dependencies manually and copy paste/customize `/src/index.ts` in your code directly.
 
@@ -81,12 +81,14 @@ const myVariableStore = variableStore<string>({
 ```
 
 ### Custom Data Validation
-
-The custom data validation is achieved through the optional `validationStatement` parameter in each store type. If a `validationStatement` is provided, the store will call the validation function before setting or updating the store's value and consequently persist the data to storage. If the validation function returns `true`, the new value will be accepted and stored. If it returns `false`, the new value will be rejected, and the store and persistent values will maintain at its previous value.
+##### customSet function:
+The custom data validation is achieved through the optional `validationStatement` parameter in each store type. If a `validationStatement` is provided, the store will use the **customSet** function instead of the original `set` function, which first validates the data before setting or updating the store's value and consequently persist the data to storage. If the validation function returns `true`, the new value will be accepted and stored. If it returns `false`, the new value will be rejected, hence the store and storage values will not be updated.
 
 This feature is essential in ensuring that only valid and structured data is populated and persisted. In cases where invalid data is set to the store or persisted storage is unexpectedly corrupted, the store and its persistent value will automatically revert to its previous valid value, avoiding any potential data crashes or inconsistencies even if they unexpectedly occur.
+##### customUpdate function:
+works the same as the original `update` function, but calls `customSet()` function to update (or try to) the store.
 
-### The `customSubscribe` Function
+### The customSubscribe Function
 The `customSubscribe` function is an extended version of the original store's `subscribe` function, providing a callback that includes both the new `value` of the store and the optional `oldValue` and used like this:  `store.subscribe(value, /* old_value */)`
 
 The function is also invoked when the store is created, and is triggered when a new value is set to the store. It performs the following actions:
