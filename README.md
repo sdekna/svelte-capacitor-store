@@ -1,93 +1,111 @@
-### Svelte Capacitor Store
-Update: v0.0.81 added `objectTestKey` and `regexTest` methods.
+# Svelte Capacitor Store
 
-Update: v0.0.7 added `getValue()` async method.
+### Introduction
+The library provides three custom Svelte stores: `arrayStore`, `objectStore`, and `variableStore`, which allow you to create persistent data stores with custom data validation options. The data stored in these stores is persisted locally using Capacitor's Preferences plugin on native devices, and in the browser (using `localStorage`) otherwise.
 
-A simple svelte persistent store that uses capacitor (preferences) storage on native devices, and localStorage otherwise, making it ideal for multi-platform projects.
+### Prerequisites
 
-Unlike localStorage, capacitor storage does not get deleted if device memory runs low, and will be deleted once the app is deleted.
+Before using this library, ensure that you have Svelte and Capacitor (if planning to run on native platforms) properly set up in your project.
 
-The library exports 3 type-safe functions: `arrayStore`, `objectStore`, `variableStore`.
+### Installation
 
-Usage:
-```
-npm i svelte-capacitor-store
-```
-or you can simply installing the dependencies and copy paste/customize `/src/index.ts` in your code directly.
+To use the Custom Store Library, you can install it via npm:
+`npm install custom-store-library`
+or install dependencies manually and copy paste/customize `/src/index.ts` in your code directly.
 
-```
-<script lang="ts">
+### Usage
 
-import {
- variableStore,
- arrayStore,
- objectStore
-} from 'svelte-capacitor-store' // or '$lib/svelte-capacitor-store';
+The library provides three main store types: `arrayStore`, `objectStore`, and `variableStore`. Each store type serves different data structures and comes with built-in persistence and custom data validation capabilities.
 
-const number = variableStore<number>({
-  initialValue: 1,
-  storeName: 'numberStore',
-  initFunction: ()=>{/* optional */}
-});
+#### `arrayStore`
 
-const email = variableStore<string>({
-  initialValue: "",
-  storeName: 'emailStore',
-  regexTest: /^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-]+)(\.[a-zA-Z]{2,5}){1,2}$/
-});
+The `arrayStore` is suitable for managing arrays of data and offers the following features:
 
-const array = arrayStore<string[]>({
-  initialValue: [],
-  storeName: 'arrayStore',
-  objectTestKey: "id" // optional
-});
+##### Parameters:
+- `storeName` (string): A unique name to identify the store in storage.
+- `initialValue` (T): The initial value for the store.
+- `initFunction` (optional, function): A function to be called after the store is initialized.
+- `validationStatement` (optional, function): A custom validation function that determines whether a new value should be accepted or not.
 
-const object = objectStore<{id: string} | null>({
-  initialValue: null,
-  storeName: 'objectStore',
-  objectTestKey: "userId" // optional
-
-});
-
-</script>
-
-{$number} {$array} {$object}
-```
-
-Every store will have 5 methods:
-- `subscribe`, `update`, `set` : normal svelte store methods behaviors.
-
-
-- `getValue`: (async) since Capacitor stores are asynchronous, the store will automatically update its value with the persisted value, however, for components that need to read the store on its initiation at the very first tick (like +layout onMount), the store (being not asynchronous) will have the `initialValue`. the `await store.getValue()` method can be used to asynchronously read the value from the persisted storage directly. (thanks to `UAAgency` for pointing this out :D)
-
-- `reset`: this method should be used to reset the store to the `initialValue`. This is especially important in objectStore and arrayStore, as `object.set(null)` and `array.set([])` will not change the persisted storage value.
-
-The store will only persist data to storage if the submitted value is defined and is of the correct type.
+##### Example:
 ```js
-  $number = true // will not persist in storage.
-  $number = 0 // will persist in storage.
-  $array = 4 | "a" | [] | "[]" | null | undefined // will not persist in storage.
-  $array = ["a", "b"] // will persist in storage.
-  $array = ["a", 7, "true"] // will persist in storage but will give you a type check warning.
+import { arrayStore } from 'custom-store-library';
 
-  const object = objectStore<{id: string} | null>({initialValue: null, storeName: 'objectStore'});
-  object.reset() // sets and persists the store to its initial value
-
-  const object_value = await object.getValue()
+const myArrayStore = arrayStore<number[]>({
+storeName: 'myArrayStore',
+initialValue: [1, 2, 3],
+validationStatement: (value) => value.every((item) => item > 1 && item < 9),
+});
 ```
 
-If the optional `objectTestKey` argument can be passed to the arrayStore and objectStore, the store will only persist to storage if the value has the key present in the new object, or in the first object of the array. The variableStore can have a `regexTest`, which, if passed, will test the new values against the provided regex expression and will only persist it to storage if it passes the test.
+### `objectStore`
 
-With the constraints set above:
+The `objectStore` is designed for managing objects and provides the following capabilities:
+
+##### Parameters:
+- `storeName` (string): A unique name to identify the store in storage.
+- `initialValue` (T): The initial value for the store.
+- `initFunction` (optional, function): A function to be called when the store initializes.
+- `validationStatement` (optional, function): A custom validation function to validate the new object. 
+
+##### Example:
 ```js
-  $array = [{name: "x"},{name: "y"}] // will not persist
-  $array = [{id: "x"},{id: "y"}] // will persist
+import { objectStore } from 'custom-store-library';
 
-  $object = {name: "x", age: 22} // will not persist
-  $object = {userId: "x", age: 22} // will persist
-
-  $email = "svelte@dev@com" // will not persist
-  $email = "svelte@dev.com" // will persist
+const myObjectStore = objectStore<MyData>({
+storeName: 'myObjectStore',
+initialValue: { name: 'John', age: 25 },
+validationStatement: (value) => value.name && value.age && value.age > 18,
+});
 ```
+
+### `variableStore`
+
+The `variableStore` is suitable for storing and validating any data type, providing the following functionalities:
+
+##### Parameters:
+- `storeName` (string): A unique name to identify the store in storage.
+- `initialValue` (T): The initial value for the store.
+- `initFunction` (optional, function): A function to be called when the store initializes.
+- `validationStatement` (optional, function): A custom validation function to validate the new value.
+
+##### Example:
+```js
+import { variableStore } from 'custom-store-library';
+
+const myVariableStore = variableStore<string>({
+  storeName: 'myVariableStore',
+  initialValue: 'Hello, World!',
+  validationStatement: (value) => typeof value === "string" && value.length < 50,
+});
+```
+
+### Custom Data Validation
+
+The custom data validation is achieved through the optional `validationStatement` parameter in each store type. If a `validationStatement` is provided, the store will call the validation function before setting or updating the store's value and consequently persist the data to storage. If the validation function returns `true`, the new value will be accepted and stored. If it returns `false`, the new value will be rejected, and the store and persistent values will maintain at its previous value.
+
+This feature is essential in ensuring that only valid and structured data is populated and persisted. In cases where invalid data is set to the store or persisted storage is unexpectedly corrupted, the store and its persistent value will automatically revert to its previous valid value, avoiding any potential data crashes or inconsistencies even if they unexpectedly occur.
+
+### The `customSubscribe` Function
+The `customSubscribe` function is an extended version of the original store's `subscribe` function, providing a callback that includes both the new `value` of the store and the optional `oldValue` and used like this:  `store.subscribe(value, /* old_value */)`
+
+The function is also invoked when the store is created, and is triggered when a new value is set to the store. It performs the following actions:
+
+1. **Data Validation** (if applicable): It verifies if the `value` is valid data by checking its type, presence, and, if applicable, it runs the custom `validationStatement` provided during store creation. If the `validationStatement` is not met, the `customSubscribe` function reverts to the `lastValue` or the `initialValue`, maintaining a consistent state.
+2. **Data Persistence**: After the validation step, the function proceeds to store the data. If the application is running on a native platform (`isDeviceNative`), the data is stored using the Capacitor Preferences Plugin with the provided `storeName` key. Otherwise, for non-native platforms, such as web, the data is stored using `localStorage` with the same `storeName` key.
+
+### Store Methods
+Every store type (`arrayStore`, `objectStore`, and `variableStore`) comes with five methods: `subscribe`, `set`, `update` and:
+-  **`getValue`** (async): The store will automatically update its value with the persisted value, however, since Capacitor stores are asynchronous, for components that need to read the store on before or during its initial initialization (at the first tick like +layout onMount), the store (being not asynchronous) will have the value of the initialValue. The `await store.getValue()` method can be used in such cases to asynchronously read the value from the persisted storage directly.
+- **`reset`**: This method should be used to reset the store to the initialValue. This is especially important in `objectStore` and `arrayStore`, as `object.set(null)` and `array.set([])` will not change the persisted storage value.
+
+### Important Notes
+- The library requires Svelte and Capacitor libraries to be properly set up in your project.
+- Make sure to provide unique `storeName` values for each store to avoid data conflicts.
+- When using data validation, be aware that strict validation rules may result in rejected updates to the store.
+
+### Support and Contributions
+
+For any questions, bug reports, or feature requests related to this library, please create an issue. Any contributions/corrections/enhancements are very welcome.
 
 I hope this helps, and would love to get feedback/corrections/improvements and any additional features requests.
