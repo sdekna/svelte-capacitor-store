@@ -10,7 +10,7 @@ Before using this library, ensure that you have Svelte and Capacitor (if plannin
 ### Installation
 
 To use the Custom Store Library, you can install it via npm:
-`npm install custom-store-library`
+`npm install svelte-capacitor-store`
 or install dependencies manually and copy paste/customize `/src/index.ts` in your code directly.
 
 ### Usage
@@ -29,7 +29,7 @@ The `arrayStore` is suitable for managing arrays of data and offers the followin
 
 ##### Example:
 ```js
-import { arrayStore } from 'custom-store-library';
+import { arrayStore } from 'svelte-capacitor-store';
 
 const myArrayStore = arrayStore<number[]>({
 storeName: 'myArrayStore',
@@ -50,7 +50,7 @@ The `objectStore` is designed for managing objects and provides the following ca
 
 ##### Example:
 ```js
-import { objectStore } from 'custom-store-library';
+import { objectStore } from 'svelte-capacitor-store';
 
 const myObjectStore = objectStore<MyData>({
 storeName: 'myObjectStore',
@@ -71,7 +71,7 @@ The `variableStore` is suitable for storing and validating any data type, provid
 
 ##### Example:
 ```js
-import { variableStore } from 'custom-store-library';
+import { variableStore } from 'svelte-capacitor-store';
 
 const myVariableStore = variableStore<string>({
   storeName: 'myVariableStore',
@@ -106,6 +106,4 @@ Every store type (`arrayStore`, `objectStore`, and `variableStore`) comes with f
 
 ### Support and Contributions
 
-For any questions, bug reports, or feature requests related to this library, please create an issue. Any contributions/corrections/enhancements are very welcome.
-
-I hope this helps, and would love to get feedback/corrections/improvements and any additional features requests.
+I hope this helps, and for any questions, bug reports, or feature requests related to this library, please create an issue. Any contributions/corrections/enhancements are very welcome.
