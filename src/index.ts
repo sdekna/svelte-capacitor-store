@@ -26,10 +26,11 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
         storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
       }
 
+      storeValueInitialized = true
+
       if (Array.isArray(storedValue)) {
         validationStatement ? customSet(storedValue) : set(storedValue)
       }
-      storeValueInitialized = true
       if (initFunction) initFunction()
     }, 0);
   }) as Writable<T>;
@@ -60,7 +61,7 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
     if (typeof window === 'undefined' || !storeValueInitialized || !value || !Array.isArray(value) || !value.length || !value?.[0]) return
     if (validationStatement && !validationStatement(value)) { customSet(lastValue ?? initialValue); return }
 
-    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(value) })
+    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: value })
     else localStorage.setItem(storeName, JSON.stringify(value));
 
   });
@@ -73,7 +74,7 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
     reset: async (): Promise<void> => {
       if (typeof window === 'undefined') return
       set(initialValue)
-      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(initialValue) })
+      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: initialValue })
       else localStorage.setItem(storeName, JSON.stringify(initialValue));
     },
     getValue: async (): Promise<T | null> => {
@@ -115,11 +116,12 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
         storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
       }
 
+      storeValueInitialized = true
+
       if (storedValue) {
         validationStatement ? customSet(storedValue) : set(storedValue)
       }
 
-      storeValueInitialized = true
       if (initFunction) initFunction()
     }, 0);
   }) as Writable<T>;
@@ -150,7 +152,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
     if (typeof window === 'undefined' || !storeValueInitialized || !value) return
     if (validationStatement && !validationStatement(value)) { customSet(lastValue ?? initialValue); return }
 
-    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(value) })
+    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: value })
     else localStorage.setItem(storeName, JSON.stringify(value));
 
   });
@@ -164,7 +166,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
     reset: async (): Promise<void> => {
       if (typeof window === 'undefined') return
       set(initialValue)
-      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(initialValue) })
+      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: initialValue })
       else localStorage.setItem(storeName, JSON.stringify(initialValue));
     },
 
@@ -207,12 +209,12 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
         storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
       }
 
+      storeValueInitialized = true
       if (storedValue !== null && storedValue !== undefined && typeof storedValue === typeof initialValue) {
         validationStatement ? customSet(storedValue) : set(storedValue)
         return
       }
 
-      storeValueInitialized = true
       if (initFunction) initFunction()
     }, 100);
   }) as Writable<T>;
@@ -241,7 +243,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
     if (typeof window === 'undefined' || !storeValueInitialized) return
     if (validationStatement && !validationStatement(value)) { customSet(lastValue ?? initialValue); return }
 
-    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(value) })
+    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: value })
     else localStorage.setItem(storeName, JSON.stringify(value));
 
   });
@@ -254,7 +256,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
     reset: async (): Promise<void> => {
       if (typeof window === 'undefined') return
       set(initialValue)
-      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: JSON.stringify(initialValue) })
+      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: initialValue })
       else localStorage.setItem(storeName, JSON.stringify(initialValue));
     },
 

@@ -1,5 +1,7 @@
 # Svelte Capacitor Store
 
+#### update: 0.1.3: bug fix in native capacitor storage.
+
 ### Introduction
 The library provides three custom Svelte stores: `arrayStore`, `objectStore`, and `variableStore`, which allow you to create persistent data stores with custom data validation options. The data stored in these stores is persisted locally using Capacitor's Preferences plugin on native devices, and in the browser (using `localStorage`) otherwise.
 
