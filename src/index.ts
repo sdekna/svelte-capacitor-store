@@ -8,90 +8,117 @@ export type ArrayStoreInputType<T> = {
   storeName: string,
   initialValue: T,
   initFunction?: () => void,
-  validationStatement?: (value: T) => boolean
+  validationStatement?: (value: T) => boolean,
+  persist?: boolean
 }
 
-export function arrayStore<T>({ storeName, initialValue, initFunction, validationStatement }: ArrayStoreInputType<T>) {
+export function arrayStore<T>({ storeName, persist, initialValue, initFunction, validationStatement }: ArrayStoreInputType<T>) {
 
-  let storeValueInitialized = false
-  let currentStoreValue: T = initialValue
+  let storeInitialized = false
+  let currentValue: T = initialValue
+  let previousValue: T = initialValue;
 
-  const { subscribe, update, set } = writable(initialValue, () => {
-    if (typeof window === 'undefined') return
-    setTimeout(async () => {
+  const subscribers = new Set<(value: T, previousValue: T) => void>();
+
+  const { set } = writable(initialValue) as Writable<T>;
+
+  async function getValue(): Promise<{ value: T, previousValue: T | null } | { value: null, previousValue: null }> {
+    try {
+      if (typeof window === 'undefined') return { value: null, previousValue: null }
+
       let storedValue: T | null
-      if (isDeviceNative) {
-        storedValue = await getCapacitorStore(storeName) as T | null
-      } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
+      let storedPreviousValue: T | null
+      if (!persist) {
+        storedValue = currentValue
+        storedPreviousValue = previousValue
       }
-
-      storeValueInitialized = true
+      else if (isDeviceNative) {
+        const { value, previousValue } = await getCapacitorStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
+      } else {
+        const { value, previousValue } = getLocalStorageStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
+      }
 
       if (Array.isArray(storedValue)) {
-        validationStatement ? customSet(storedValue) : set(storedValue)
+        customSet(storedValue, storedPreviousValue)
+        return { value: storedValue, previousValue: storedPreviousValue }
       }
-      if (initFunction) initFunction()
-    }, 0);
-  }) as Writable<T>;
 
-  const customUpdate = (callback: (value: T) => T): void => {
-    const newValue = callback(currentStoreValue);
+      return { value: null, previousValue: null }
+
+    } catch (error) {
+      // console.error(`Error at getValue function, store: ${storeName}.`, { error });
+      return { value: null, previousValue: null }
+    }
+
+  }
+
+  const customSet = (value: T, storedPreviousValue?: T | null): void => {
+    if (typeof window === 'undefined' || !Array.isArray(value) || !value.length) return
+    if (validationStatement && !validationStatement(value)) return
+    set(value);
+
+    previousValue = storedPreviousValue ?? currentValue;
+    currentValue = value;
+    if (persist) persistStore(storeName, value, previousValue)
+
+    subscribers.forEach((callback) => {
+      callback(value, previousValue);
+    });
+
+  };
+
+  const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
+    if (typeof window === 'undefined') return
+    if (!storeInitialized) {
+      getValue()
+      if (initFunction) initFunction()
+      storeInitialized = true
+    }
+
+    subscribers.add(callback);
+    callback(currentValue, previousValue);
+
+    return () => {
+      subscribers.delete(callback);
+    };
+  };
+
+  const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
+    if (typeof window === 'undefined') return
+    if (!storeInitialized) {
+      getValue()
+      if (initFunction) initFunction()
+      storeInitialized = true
+    }
+
+    const newValue = callback(currentValue, previousValue);
     customSet(newValue)
   };
 
-  const customSet = (value: T): void => {
-    if (typeof window === 'undefined' || !value || !Array.isArray(value) || !value.length || !value?.[0]) return
-    if (validationStatement && !validationStatement(value)) return
-    set(value);
-    currentStoreValue = value
 
-  };
+  function reset() {
+    if (typeof window === 'undefined') return
+    set(initialValue)
 
-  function customSubscribe(callback: (value: T, lastValue: T) => void) {
-    let lastStoreValue: T = initialValue;
-    return subscribe((value: T) => {
-      const lastValue = structuredClone(lastStoreValue);
-      lastStoreValue = value;
-      return callback(value, lastValue);
+    previousValue = currentValue;
+    currentValue = initialValue;
+
+    if (persist) persistStore(storeName, initialValue, previousValue)
+    subscribers.forEach((callback) => {
+      callback(initialValue, previousValue);
     });
   }
 
-  customSubscribe(async (value: T, lastValue: T) => {
-    if (typeof window === 'undefined' || !storeValueInitialized || !value || !Array.isArray(value) || !value.length || !value?.[0]) return
-    if (validationStatement && !validationStatement(value)) { customSet(lastValue ?? initialValue); return }
-
-    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: value })
-    else localStorage.setItem(storeName, JSON.stringify(value));
-
-  });
-
   return {
+    reset,
+    getValue,
+    set: customSet,
+    update: customUpdate,
     subscribe: customSubscribe,
-    update: validationStatement ? customUpdate : update,
-    set: validationStatement ? customSet : set,
-
-    reset: async (): Promise<void> => {
-      if (typeof window === 'undefined') return
-      set(initialValue)
-      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: initialValue })
-      else localStorage.setItem(storeName, JSON.stringify(initialValue));
-    },
-    getValue: async (): Promise<T | null> => {
-      let storedValue: T | null
-      if (isDeviceNative) {
-        storedValue = await getCapacitorStore(storeName) as T | null
-      } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
-      }
-
-      if (Array.isArray(storedValue)) {
-        validationStatement ? customSet(storedValue) : set(storedValue)
-        return storedValue
-      }
-
-      return null
-    }
 
   }
 }
@@ -99,92 +126,117 @@ export function arrayStore<T>({ storeName, initialValue, initFunction, validatio
 
 
 export type ObjectStoreInputType<T> = {
-  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean
+  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean, persist?: boolean
 }
 
-export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement }: ObjectStoreInputType<T>) {
-  let storeValueInitialized = false
-  let currentStoreValue: T = initialValue
+export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement, persist }: ObjectStoreInputType<T>) {
 
-  const { subscribe, update, set } = writable(initialValue, () => {
-    if (typeof window === 'undefined') return
-    setTimeout(async () => {
+  let storeInitialized = false
+  let currentValue: T = initialValue
+  let previousValue: T = initialValue;
+
+  const subscribers = new Set<(value: T, previousValue: T) => void>();
+
+  const { set } = writable(initialValue) as Writable<T>;
+
+  async function getValue(): Promise<{ value: T, previousValue: T | null } | { value: null, previousValue: null }> {
+    try {
+      if (typeof window === 'undefined') return { value: null, previousValue: null }
+
       let storedValue: T | null
-      if (isDeviceNative) {
-        storedValue = await getCapacitorStore(storeName) as T | null
-      } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
+      let storedPreviousValue: T | null
+      if (!persist) {
+        storedValue = currentValue
+        storedPreviousValue = previousValue
       }
+      else if (isDeviceNative) {
+        const { value, previousValue } = await getCapacitorStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
 
-      storeValueInitialized = true
+      } else {
+        const { value, previousValue } = getLocalStorageStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
+      }
 
       if (storedValue) {
-        validationStatement ? customSet(storedValue) : set(storedValue)
+        customSet(storedValue, storedPreviousValue)
+        return { value: storedValue, previousValue: storedPreviousValue }
       }
 
-      if (initFunction) initFunction()
-    }, 0);
-  }) as Writable<T>;
+      return { value: null, previousValue: null }
 
-  const customUpdate = (callback: (value: T) => T): void => {
-    const newValue = callback(currentStoreValue);
-    customSet(newValue)
-  };
+    } catch (error) {
+      // console.error(`Error at getValue function, store: ${storeName}.`, { error });
+      return { value: null, previousValue: null }
+    }
 
-  const customSet = (value: T): void => {
-    console.log("customSet", { value })
+  }
+
+  const customSet = (value: T, storedPreviousValue?: T | null): void => {
     if (typeof window === 'undefined' || !value) return
     if (validationStatement && !validationStatement(value)) return
     set(value);
-    currentStoreValue = value
+
+    previousValue = storedPreviousValue ?? currentValue;
+    currentValue = value;
+    if (persist) persistStore(storeName, value, previousValue)
+
+    subscribers.forEach((callback) => {
+      callback(currentValue, previousValue);
+    });
   };
 
-  function customSubscribe(callback: (value: T, lastValue: T) => void) {
-    let lastStoreValue: T = initialValue;
-    return subscribe((value: T) => {
-      const lastValue = structuredClone(lastStoreValue);
-      lastStoreValue = value;
-      return callback(value, lastValue);
+  const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
+    if (typeof window === 'undefined') return
+    if (!storeInitialized) {
+      getValue()
+      if (initFunction) initFunction()
+      storeInitialized = true
+    }
+
+    subscribers.add(callback);
+    callback(currentValue, previousValue);
+
+    return () => {
+      subscribers.delete(callback);
+    };
+  };
+
+  const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
+    if (typeof window === 'undefined') return
+    if (!storeInitialized) {
+      getValue()
+      if (initFunction) initFunction()
+      storeInitialized = true
+    }
+
+    const newValue = callback(currentValue, previousValue);
+    customSet(newValue)
+  };
+
+
+  function reset() {
+    if (typeof window === 'undefined') return
+    set(initialValue)
+
+    previousValue = currentValue;
+    currentValue = initialValue;
+
+    if (persist) persistStore(storeName, initialValue, previousValue)
+    subscribers.forEach((callback) => {
+      callback(initialValue, previousValue);
     });
   }
-
-  customSubscribe(async (value: T, lastValue) => {
-    if (typeof window === 'undefined' || !storeValueInitialized || !value) return
-    if (validationStatement && !validationStatement(value)) { customSet(lastValue ?? initialValue); return }
-
-    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: value })
-    else localStorage.setItem(storeName, JSON.stringify(value));
-
-  });
 
 
   return {
     subscribe: customSubscribe,
-    update: validationStatement ? customUpdate : update,
-    set: validationStatement ? customSet : set,
-
-    reset: async (): Promise<void> => {
-      if (typeof window === 'undefined') return
-      set(initialValue)
-      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: initialValue })
-      else localStorage.setItem(storeName, JSON.stringify(initialValue));
-    },
-
-    getValue: async (): Promise<T | null> => {
-      let storedValue: T | null
-      if (isDeviceNative) {
-        storedValue = await getCapacitorStore(storeName) as T | null
-      } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
-      }
-
-      if (storedValue) {
-        validationStatement ? customSet(storedValue) : set(storedValue)
-        return storedValue
-      }
-
-      return null
-    }
+    update: customUpdate,
+    set: customSet,
+    getValue,
+    reset,
 
   }
 }
@@ -192,111 +244,176 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
 
 export type VariableStoreInputType<T> = {
-  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean
+  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean, persist?: boolean,
 }
 
-export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement }: VariableStoreInputType<T>) {
-  let storeValueInitialized = false
-  let currentStoreValue: T = initialValue
+export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement, persist }: VariableStoreInputType<T>) {
 
-  const { subscribe, update, set } = writable(initialValue, () => {
-    if (typeof window === 'undefined') return
-    setTimeout(async () => {
+  let storeInitialized = false
+  let currentValue: T = initialValue
+  let previousValue = initialValue;
+
+  const subscribers = new Set<(value: T, previousValue: T) => void>();
+
+  const { set } = writable(initialValue) as Writable<T>;
+
+
+  async function getValue(): Promise<{ value: T, previousValue: T | null } | { value: null, previousValue: null }> {
+    try {
+      if (typeof window === 'undefined') return { value: null, previousValue: null }
+
       let storedValue: T | null
-      if (isDeviceNative) {
-        storedValue = await getCapacitorStore(storeName) as T | null
+      let storedPreviousValue: T | null
+      if (!persist) {
+        storedValue = currentValue
+        storedPreviousValue = previousValue
+      }
+      else if (isDeviceNative) {
+        const { value, previousValue } = await getCapacitorStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
+
       } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
+        const { value, previousValue } = getLocalStorageStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
       }
 
-      storeValueInitialized = true
-      if (storedValue !== null && storedValue !== undefined && typeof storedValue === typeof initialValue) {
-        validationStatement ? customSet(storedValue) : set(storedValue)
-        return
+      if (storedValue !== null && storedValue !== undefined) {
+        customSet(storedValue, storedPreviousValue)
+        return { value: storedValue, previousValue: storedPreviousValue }
       }
 
+      return { value: null, previousValue: null }
+
+    } catch (error) {
+      // console.error(`Error at getValue function, store: ${storeName}.`, { error });
+      return { value: null, previousValue: null }
+    }
+  }
+
+
+
+  const customSet = (value: T, storedPreviousValue?: T | null): void => {
+    if (typeof window === 'undefined' || (validationStatement && !validationStatement(value))) return
+    set(value);
+
+    previousValue = storedPreviousValue ?? currentValue;
+    currentValue = value;
+    if (persist) persistStore(storeName, value, previousValue)
+
+    subscribers.forEach((callback) => {
+      callback(value, previousValue);
+    });
+  };
+
+  const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
+    if (typeof window === 'undefined') return
+    if (!storeInitialized) {
+      getValue()
       if (initFunction) initFunction()
-    }, 100);
-  }) as Writable<T>;
-  const customUpdate = (callback: (value: T) => T): void => {
-    const newValue = callback(currentStoreValue);
+      storeInitialized = true
+    }
+
+    subscribers.add(callback);
+    callback(currentValue, previousValue);
+
+    return () => {
+      subscribers.delete(callback);
+    };
+  };
+
+  const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
+    if (!storeInitialized) {
+      getValue()
+      if (initFunction) initFunction()
+      storeInitialized = true
+    }
+
+    const newValue = callback(currentValue, previousValue);
     customSet(newValue)
   };
 
-  const customSet = (value: T): void => {
-    if (typeof window === 'undefined' || (validationStatement && !validationStatement(value))) return
-    set(value);
-    currentStoreValue = value
-  };
 
-  function customSubscribe(callback: (value: T, lastValue: T) => void) {
-    let lastStoreValue: T = initialValue;
-    return subscribe((value: T) => {
-      const lastValue = structuredClone(lastStoreValue);
-      lastStoreValue = value;
-      return callback(value, lastValue);
+  function reset() {
+    if (typeof window === 'undefined') return
+    set(initialValue)
+
+    previousValue = currentValue;
+    currentValue = initialValue;
+
+    if (persist) persistStore(storeName, initialValue, previousValue)
+    subscribers.forEach((callback) => {
+      callback(initialValue, previousValue);
     });
   }
 
 
-  customSubscribe(async (value: T, lastValue: T) => {
-    if (typeof window === 'undefined' || !storeValueInitialized) return
-    if (validationStatement && !validationStatement(value)) { customSet(lastValue ?? initialValue); return }
-
-    if (isDeviceNative) await setCapacitorStore({ key: storeName, value: value })
-    else localStorage.setItem(storeName, JSON.stringify(value));
-
-  });
-
   return {
     subscribe: customSubscribe,
-    update: validationStatement ? customUpdate : update,
-    set: validationStatement ? customSet : set,
-
-    reset: async (): Promise<void> => {
-      if (typeof window === 'undefined') return
-      set(initialValue)
-      if (isDeviceNative) await setCapacitorStore({ key: storeName, value: initialValue })
-      else localStorage.setItem(storeName, JSON.stringify(initialValue));
-    },
-
-    getValue: async (): Promise<T | null> => {
-      let storedValue: T | null
-      if (isDeviceNative) {
-        storedValue = await getCapacitorStore(storeName) as T | null
-      } else {
-        storedValue = JSON.parse(localStorage.getItem(storeName) || 'null') as T | null
-      }
-
-      if (typeof storedValue === typeof initialValue && storedValue !== null) {
-        validationStatement ? customSet(storedValue) : set(storedValue)
-        return storedValue
-      }
-
-      return null
-    }
-
+    update: customUpdate,
+    set: customSet,
+    getValue,
+    reset,
   }
 }
 
-async function getCapacitorStore(key: string) {
+
+async function persistStore<T>(key: string, value: T, previousValue: T) {
+  if (isDeviceNative) await setCapacitorStore<T>({ key, value, previousValue })
+  else setLocalStorageStore<T>({ key, value, previousValue })
+}
+
+
+function getLocalStorageStore<T>(key: string): { value: T, previousValue: T } | { value: null, previousValue: null } {
   try {
-    if (typeof window === 'undefined' || !isDeviceNative) return null
+    if (typeof window === 'undefined') return { value: null, previousValue: null }
+    const stringValue = localStorage.getItem(key)
+    if (!stringValue) return { value: null, previousValue: null }
+
+    const { value, previousValue } = JSON.parse(stringValue) as { value: T, previousValue: T }
+
+    return { value, previousValue };
+  } catch (error) {
+    // console.error(`Error at getLocalStorageStore function, key: ${key}.`, { error });
+    return { value: null, previousValue: null }
+  }
+}
+
+function setLocalStorageStore<T>({ key, value, previousValue }: { key: string, value: T, previousValue: T }) {
+  try {
+    if (typeof window === 'undefined') return
+    const persistedValue = { value, previousValue }
+    localStorage.setItem(key, JSON.stringify(persistedValue))
+  } catch (error) {
+    // console.error(`Error at setLocalStorageStore function, key: ${key}.`, { error });
+  }
+}
+
+
+async function getCapacitorStore<T>(key: string): Promise<{ value: T, previousValue: T } | { value: null, previousValue: null }> {
+  try {
+    if (typeof window === 'undefined' || !isDeviceNative) return { value: null, previousValue: null }
 
     const result = await Preferences.get({ key });
-    const value = result.value;
-    return value ? JSON.parse(value) : null;
+    const stringValue = result.value;
+    if (!stringValue) return { value: null, previousValue: null }
+
+    const { value, previousValue } = JSON.parse(stringValue) as { value: T, previousValue: T }
+
+    return { value, previousValue };
   } catch (error) {
-    // console.error(`Error at getStore function, key: ${key}.`, { error });
-    return null
+    // console.error(`Error at getCapacitorStore function, key: ${key}.`, { error });
+    return { value: null, previousValue: null }
   }
 }
 
-async function setCapacitorStore({ key, value }: { key: string, value: any }) {
+async function setCapacitorStore<T>({ key, value, previousValue }: { key: string, value: T, previousValue: T }) {
   try {
     if (typeof window === 'undefined' || !isDeviceNative) return
-    await Preferences.set({ key, value: JSON.stringify(value) });
+    const persistedValue = { value, previousValue }
+    await Preferences.set({ key, value: JSON.stringify(persistedValue) });
   } catch (error) {
-    // console.error(`Error at setStore function, key: ${key}.`, { error });
+    // console.error(`Error at setCapacitorStore function, key: ${key}.`, { error });
   }
 }
