@@ -1,4 +1,5 @@
-#### update: 0.2.0: Major update... complete persistance logic rewrite. New features and complete typescript support.
+#### update: 0.2.2: bug fix for `Cannot read properties of undefined (reading 'unsubscribe')` during ssr.
+#### update: 0.2.1: Major update... complete persistance logic rewrite. New features and complete typescript support.
 #### update: 0.1.3: bug fix in native capacitor storage.
 
 ## Table of Contents

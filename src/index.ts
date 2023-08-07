@@ -81,7 +81,7 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
   initializeStore()
 
   const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return () => { }
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -201,7 +201,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
   initializeStore()
 
   const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return () => { }
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -324,7 +324,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
   initializeStore()
 
   const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return () => { }
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
