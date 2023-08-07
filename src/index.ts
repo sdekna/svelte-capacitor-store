@@ -7,14 +7,13 @@ const isDeviceNative = Capacitor.isNativePlatform();
 export type ArrayStoreInputType<T> = {
   storeName: string,
   initialValue: T,
-  initFunction?: () => void,
-  validationStatement?: (value: T) => boolean,
+  initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
+  validationStatement?: (value: NonNullable<T>) => boolean,
   persist?: boolean
 }
 
 export function arrayStore<T>({ storeName, persist, initialValue, initFunction, validationStatement }: ArrayStoreInputType<T>) {
 
-  let storeInitialized = false
   let currentValue: T = initialValue
   let previousValue: T = initialValue;
 
@@ -28,6 +27,7 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
 
       let storedValue: T | null
       let storedPreviousValue: T | null
+
       if (!persist) {
         storedValue = currentValue
         storedPreviousValue = previousValue
@@ -42,12 +42,8 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
         storedValue = value
       }
 
-      if (Array.isArray(storedValue)) {
-        customSet(storedValue, storedPreviousValue)
-        return { value: storedValue, previousValue: storedPreviousValue }
-      }
-
-      return { value: null, previousValue: null }
+      if (Array.isArray(storedValue)) return { value: storedValue, previousValue: storedPreviousValue }
+      else return { value: null, previousValue: null }
 
     } catch (error) {
       // console.error(`Error at getValue function, store: ${storeName}.`, { error });
@@ -68,17 +64,24 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
     subscribers.forEach((callback) => {
       callback(value, previousValue);
     });
-
   };
+
+  async function initializeStore() {
+    const { value, previousValue } = await getValue()
+    if (Array.isArray(value)) customSet(value, previousValue)
+    if (initFunction) {
+      try {
+        await initFunction(value, previousValue, customSet, reset)
+      } catch (error) {
+        console.error(error)
+      }
+    }
+  }
+
+  initializeStore()
 
   const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
     if (typeof window === 'undefined') return
-    if (!storeInitialized) {
-      getValue()
-      if (initFunction) initFunction()
-      storeInitialized = true
-    }
-
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -89,14 +92,8 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
 
   const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
     if (typeof window === 'undefined') return
-    if (!storeInitialized) {
-      getValue()
-      if (initFunction) initFunction()
-      storeInitialized = true
-    }
-
     const newValue = callback(currentValue, previousValue);
-    customSet(newValue)
+    if (Array.isArray(newValue)) customSet(newValue)
   };
 
 
@@ -126,12 +123,15 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
 
 
 export type ObjectStoreInputType<T> = {
-  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean, persist?: boolean
+  storeName: string,
+  initialValue: T,
+  persist?: boolean
+  validationStatement?: (value: NonNullable<T>) => boolean,
+  initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
 }
 
 export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement, persist }: ObjectStoreInputType<T>) {
 
-  let storeInitialized = false
   let currentValue: T = initialValue
   let previousValue: T = initialValue;
 
@@ -160,10 +160,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
         storedValue = value
       }
 
-      if (storedValue) {
-        customSet(storedValue, storedPreviousValue)
-        return { value: storedValue, previousValue: storedPreviousValue }
-      }
+      if (storedValue) return { value: storedValue, previousValue: storedPreviousValue }
 
       return { value: null, previousValue: null }
 
@@ -177,6 +174,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
   const customSet = (value: T, storedPreviousValue?: T | null): void => {
     if (typeof window === 'undefined' || !value) return
     if (validationStatement && !validationStatement(value)) return
+
     set(value);
 
     previousValue = storedPreviousValue ?? currentValue;
@@ -188,14 +186,22 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
     });
   };
 
+  async function initializeStore() {
+    const { value, previousValue } = await getValue()
+    if (value) customSet(value, previousValue)
+    if (initFunction) {
+      try {
+        await initFunction(value, previousValue, customSet, reset)
+      } catch (error) {
+        console.error(error)
+      }
+    }
+  }
+
+  initializeStore()
+
   const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
     if (typeof window === 'undefined') return
-    if (!storeInitialized) {
-      getValue()
-      if (initFunction) initFunction()
-      storeInitialized = true
-    }
-
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -206,14 +212,8 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
   const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
     if (typeof window === 'undefined') return
-    if (!storeInitialized) {
-      getValue()
-      if (initFunction) initFunction()
-      storeInitialized = true
-    }
-
     const newValue = callback(currentValue, previousValue);
-    customSet(newValue)
+    if (newValue) customSet(newValue)
   };
 
 
@@ -242,14 +242,17 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 }
 
 
-
 export type VariableStoreInputType<T> = {
-  storeName: string, initialValue: T, initFunction?: () => void, validationStatement?: (value: T) => boolean, persist?: boolean,
+  storeName: string,
+  initialValue: T,
+  validationStatement?: (value: NonNullable<T>) => boolean,
+  persist?: boolean,
+  initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
+
 }
 
 export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement, persist }: VariableStoreInputType<T>) {
 
-  let storeInitialized = false
   let currentValue: T = initialValue
   let previousValue = initialValue;
 
@@ -279,10 +282,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
         storedValue = value
       }
 
-      if (storedValue !== null && storedValue !== undefined) {
-        customSet(storedValue, storedPreviousValue)
-        return { value: storedValue, previousValue: storedPreviousValue }
-      }
+      if (storedValue !== null && storedValue !== undefined) return { value: storedValue, previousValue: storedPreviousValue }
 
       return { value: null, previousValue: null }
 
@@ -295,7 +295,9 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
 
 
   const customSet = (value: T, storedPreviousValue?: T | null): void => {
-    if (typeof window === 'undefined' || (validationStatement && !validationStatement(value))) return
+    if (typeof window === 'undefined' || value === null || value === undefined) return
+    if (validationStatement && !validationStatement(value)) return
+
     set(value);
 
     previousValue = storedPreviousValue ?? currentValue;
@@ -307,14 +309,22 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
     });
   };
 
+  async function initializeStore() {
+    const { value, previousValue } = await getValue()
+    if (value !== null) customSet(value, previousValue)
+    if (initFunction) {
+      try {
+        await initFunction(value, previousValue, customSet, reset)
+      } catch (error) {
+        console.error(error)
+      }
+    }
+  }
+
+  initializeStore()
+
   const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
     if (typeof window === 'undefined') return
-    if (!storeInitialized) {
-      getValue()
-      if (initFunction) initFunction()
-      storeInitialized = true
-    }
-
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -324,12 +334,6 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
   };
 
   const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
-    if (!storeInitialized) {
-      getValue()
-      if (initFunction) initFunction()
-      storeInitialized = true
-    }
-
     const newValue = callback(currentValue, previousValue);
     customSet(newValue)
   };
@@ -347,7 +351,6 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
       callback(initialValue, previousValue);
     });
   }
-
 
   return {
     subscribe: customSubscribe,
