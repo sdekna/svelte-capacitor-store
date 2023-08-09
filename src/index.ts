@@ -9,10 +9,11 @@ export type ArrayStoreInputType<T> = {
   initialValue: T,
   initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
   validationStatement?: (value: NonNullable<T>) => boolean,
-  persist?: boolean
+  persist?: boolean,
+  noDuplication?: boolean,
 }
 
-export function arrayStore<T>({ storeName, persist, initialValue, initFunction, validationStatement }: ArrayStoreInputType<T>) {
+export function arrayStore<T>({ storeName, persist, initialValue, noDuplication, initFunction, validationStatement }: ArrayStoreInputType<T>) {
 
   let currentValue: T = initialValue
   let previousValue: T = initialValue;
@@ -52,9 +53,11 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
 
   }
 
-  const customSet = (value: T, storedPreviousValue?: T | null): void => {
+  const customSet = (value: T, storedPreviousValue?: T | null, initialization?: boolean): void => {
     if (typeof window === 'undefined' || !Array.isArray(value) || !value.length) return
+    if (noDuplication && !initialization && areArraysEqual(value, currentValue)) return
     if (validationStatement && !validationStatement(value)) return
+
     set(value);
 
     previousValue = storedPreviousValue ?? currentValue;
@@ -68,7 +71,8 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
 
   async function initializeStore() {
     const { value, previousValue } = await getValue()
-    if (Array.isArray(value)) customSet(value, previousValue)
+    if (Array.isArray(value)) customSet(value, previousValue, true)
+    else customSet(initialValue)
     if (initFunction) {
       try {
         await initFunction(value, previousValue, customSet, reset)
@@ -115,6 +119,7 @@ export function arrayStore<T>({ storeName, persist, initialValue, initFunction, 
     getValue,
     set: customSet,
     update: customUpdate,
+    init: initializeStore,
     subscribe: customSubscribe,
 
   }
@@ -126,11 +131,12 @@ export type ObjectStoreInputType<T> = {
   storeName: string,
   initialValue: T,
   persist?: boolean
+  noDuplication?: boolean,
   validationStatement?: (value: NonNullable<T>) => boolean,
   initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
 }
 
-export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement, persist }: ObjectStoreInputType<T>) {
+export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement, persist, noDuplication }: ObjectStoreInputType<T>) {
 
   let currentValue: T = initialValue
   let previousValue: T = initialValue;
@@ -171,10 +177,10 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
   }
 
-  const customSet = (value: T, storedPreviousValue?: T | null): void => {
+  const customSet = (value: T, storedPreviousValue?: T | null, initialization?: boolean): void => {
     if (typeof window === 'undefined' || !value) return
+    if (noDuplication && !initialization && areObjectsEqual(value, currentValue)) return
     if (validationStatement && !validationStatement(value)) return
-
     set(value);
 
     previousValue = storedPreviousValue ?? currentValue;
@@ -188,7 +194,8 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
   async function initializeStore() {
     const { value, previousValue } = await getValue()
-    if (value) customSet(value, previousValue)
+    if (value) customSet(value, previousValue, true)
+    else customSet(initialValue)
     if (initFunction) {
       try {
         await initFunction(value, previousValue, customSet, reset)
@@ -233,6 +240,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
   return {
     subscribe: customSubscribe,
+    init: initializeStore,
     update: customUpdate,
     set: customSet,
     getValue,
@@ -248,10 +256,10 @@ export type VariableStoreInputType<T> = {
   validationStatement?: (value: NonNullable<T>) => boolean,
   persist?: boolean,
   initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
-
+  noDuplication?: boolean,
 }
 
-export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement, persist }: VariableStoreInputType<T>) {
+export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement, persist, noDuplication }: VariableStoreInputType<T>) {
 
   let currentValue: T = initialValue
   let previousValue = initialValue;
@@ -292,10 +300,9 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
     }
   }
 
-
-
-  const customSet = (value: T, storedPreviousValue?: T | null): void => {
+  const customSet = (value: T, storedPreviousValue?: T | null, initialization?: boolean): void => {
     if (typeof window === 'undefined' || value === null || value === undefined) return
+    if (noDuplication && !initialization && value === currentValue) return
     if (validationStatement && !validationStatement(value)) return
 
     set(value);
@@ -311,7 +318,8 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
 
   async function initializeStore() {
     const { value, previousValue } = await getValue()
-    if (value !== null) customSet(value, previousValue)
+    if (value !== null) customSet(value, previousValue, true)
+    else customSet(initialValue)
     if (initFunction) {
       try {
         await initFunction(value, previousValue, customSet, reset)
@@ -354,6 +362,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
 
   return {
     subscribe: customSubscribe,
+    init: initializeStore,
     update: customUpdate,
     set: customSet,
     getValue,
@@ -419,4 +428,58 @@ async function setCapacitorStore<T>({ key, value, previousValue }: { key: string
   } catch (error) {
     // console.error(`Error at setCapacitorStore function, key: ${key}.`, { error });
   }
+}
+
+function areObjectsEqual(object1: any, object2: any): boolean {
+  if (typeof object1 !== typeof object2) return false;
+  if (object1 === object2) return true;
+
+  if (Array.isArray(object1)) {
+    if (!Array.isArray(object2) || object1.length !== object2.length) return false;
+    return object1.every((value, index) => areObjectsEqual(value, object2[index]));
+  }
+
+  if (typeof object1 === 'object' && object1 !== null) {
+    const keys1 = Object.keys(object1);
+    const keys2 = Object.keys(object2);
+
+    if (keys1.length !== keys2.length) return false;
+
+    for (const key of keys1) {
+      if (!keys2.includes(key) || !areObjectsEqual(object1[key], object2[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+function areArraysEqual(array1: any[] | any, array2: any[] | any): boolean {
+  if (!array1 || !array2 || array1.length !== array2.length) {
+    return false;
+  }
+
+  for (let i = 0; i < array1.length; i++) {
+    const value1 = array1[i];
+    const value2 = array2[i];
+
+    if (value1 !== value2) {
+      if (typeof value1 === 'object' && value1 !== null) {
+        if (!areObjectsEqual(value1, value2)) {
+          return false;
+        }
+      } else if (Array.isArray(value1)) {
+        if (!Array.isArray(value2) || !areArraysEqual(value1, value2)) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }

@@ -1,51 +1,60 @@
+#### update: 0.2.3: 
+  - Each store now exports an async `.init()` method, and accepts an optional `noDuplication` option.
+  - `initialValue` will now only be set to the store if no persisted values are in storage (if persisted `true`).
+
 #### update: 0.2.2: bug fix for `Cannot read properties of undefined (reading 'unsubscribe')` during ssr.
 #### update: 0.2.1: Major update... complete persistance logic rewrite. New features and complete typescript support.
 #### update: 0.1.3: bug fix in native capacitor storage.
 
 ## Table of Contents
 
-1. [Introduction](#introduction)
-2. [Installation](#installation)
-3. [Usage](#usage)
-    - [Creating an Array Store](#creating-an-array-store)
-    - [Creating an Object Store](#creating-an-object-store)
-    - [Creating a Variable Store](#creating-a-variable-store)
-    - [Subscribing to Store Changes](#subscribing-to-store-changes)
-    - [Updating Store Values](#updating-store-values)
-    - [Getting Store Values](#getting-store-values)
-    - [Resetting Store Values](#resetting-store-values)
-4. [Benefits](#benefits)
-5. [Custom Functions](#custom-functions)
-    - [`persistStore`](#persiststore)
-    - [`getLocalStorageStore`](#getlocalstoragestore)
-    - [`setLocalStorageStore`](#setlocalstoragestore)
-    - [`getCapacitorStore`](#getcapacitorstore)
-    - [`setCapacitorStore`](#setcapacitorstore)
-6. [Examples](#examples)
-7. [FAQ](#faq)
-8. [Conclusion](#conclusion)
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Configuration Options](#configuration-options)
+  - [Methods](#methods)
+  - [Creating an Array Store](#creating-an-array-store)
+  - [Creating an Object Store](#creating-an-object-store)
+  - [Creating a Variable Store](#creating-a-variable-store)
+  - [Subscribing to Store Changes](#subscribing-to-store-changes)
+  - [Updating Store Values](#updating-store-values)
+  - [Getting Store Values](#getting-store-values)
+  - [Resetting Store Values](#resetting-store-values)
+- [Custom Functions](#custom-functions)
+  - [`customSet`](#customset)
+  - [`customUpdate`](#customupdate)
+  - [`customSubscribe`](#customsubscribe)
+  - [`persistStore`](#persiststore)
+- [Examples](#examples)
+  - [Using the `validationStatement` Function](#example-1-using-the-validationstatement-function)
+  - [Non Persisted Store with `initFunction`](#example-2-non-persisted-store-with-initfunction)
+  - [Combining Functions](#example-3-combining-functions)
+  - [Persisted Store as an SDK](#example-4-persisted-store-as-an-sdk)
+- [Some Notes](#some-notes)
+- [Support and Contributions](#support-and-contributions)
+
 
 ## Introduction
 The **Svelte Capacitor Store** library is designed to provide advanced state management capabilities for Svelte applications. With support for persistent storage through `Capacitor Preferences` in native devices and browser `localStorage` otherwise, which can enhance your ability to manage and maintain valid data across multiple platforms on a single code-base, with extra svelte sauces...
 
 ## Installation
-To install the library:
-`npm install svelte-capacitor-store`
+To install the library: `npm install svelte-capacitor-store` or copy `src/index.ts` directly to your project.
 
 ## Usage
 #### Configuration Options:
 All exported store functions accept the following configuration options:
 
-- `storeName` (required): A **unique** string that defines the name of the store for identification.
-- `initialValue` (required): The initial value for the store.
+- `storeName` (required) (string): A **unique** string that defines the name of the store for identification.
+- `initialValue` (required): The initial value for the store. It will only be set if the store has no persisted value in storage.
 - `persist` (optional): A boolean that determines whether the store data should persist across sessions, if it is not passed or is set to `false`, then the stores will act in the same manner accept for persistence of the data.
 - `validationStatement` (optional): A function that validates the incoming value before updating the store. The function provides 1 parameter:
-	- `value`: the value that needs to be validated before updating the store. The `value` is guaranteed to not be `null` or `undefined` so no need for `if(value)`, in case of `arrayStore` it is guaranteed to not be `null` or `undefined` and also is an array, so no need for `if(Array.isArray(value))`.  
+	- `value`: the value that needs to be validated before updating the store. The `value` is guaranteed to not be `null` or `undefined` so no need for `if(value)`, in case of `arrayStore` it is guaranteed to not be `null` or `undefined` and also is an array, so no need for `if(Array.isArray(value))`.
 - `initFunction` (optional) (async): An async function that gets executed inside a try/catch block on store initialization. The function provides 4 parameters:
 	- `currentValue`: the current stored value. (could be `null`)
 	- `previousValue`: the previous stored value. (could be `null`)
 	- `set`: the `customSet` function to update the store value if needed.
 	- `reset`: reset the store value to `initialValue` if needed.
+- `noDuplication` (optional) (boolean): If set to `true`, it will first compare the each new update value with the current store value, before making any further validations, and will only update (if validation check is passed) the store if the new value is different from the current value. It works recursively for objects, arrays, and variables. It can be used to avoid unnecessary updates/triggers/reads/writes.
 
 #### Methods
 Each store  (`arrayStore`, `objectStore`, `variableStore`) instance provides the following methods:
@@ -53,8 +62,10 @@ Each store  (`arrayStore`, `objectStore`, `variableStore`) instance provides t
 - `getValue` (async):  `const { value, previousValue } = await getValue()` returns the stored current and previous values directly from the persisted storage. Useful to read the store value of a store that is not yet initialized (e.g. needing the values on `onMount`).
 - `reset`: This method should be used to reset the store to the `initialValue`. This is especially important in `objectStore` and `arrayStore`, as `objectStore.set(null)` and `arrayStore.set([])` will not update the store value.
 - `set(value)`: Sets a new value for the store.
-- `update(callback)`: Updates the store using a callback function providing current and previous values.
-- `subscribe(callback)`: Subscribes to changes in the store, providing current and previous values.
+- `update(currentValue, previousValue(optional))`: Updates the store using a callback function providing current and previous values.
+- `subscribe(currentValue, previousValue(optional))`: Subscribes to changes in the store, providing current and previous values.
+- `init()` (async): Manually initialize the store before it having to be read. Could be useful in critical stores like auth or profile stores.
+
 
 ### Creating an Array Store
 The `arrayStore` function creates a store for arrays. The `arrayStore` will only allow defined array values, thus in the `validationStatement`, the `value` is already defined and is an array. Any update that does not pass the `validationStatement` (i.e. the function returns `false`) will not be set and thus will not be persisted.
