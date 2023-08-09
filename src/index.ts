@@ -72,7 +72,7 @@ export function arrayStore<T>({ storeName, persist, initialValue, noDuplication,
   async function initializeStore() {
     const { value, previousValue } = await getValue()
     if (Array.isArray(value)) customSet(value, previousValue, true)
-    else customSet(initialValue)
+    else customSet(initialValue, null, true)
     if (initFunction) {
       try {
         await initFunction(value, previousValue, customSet, reset)
@@ -195,7 +195,7 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
   async function initializeStore() {
     const { value, previousValue } = await getValue()
     if (value) customSet(value, previousValue, true)
-    else customSet(initialValue)
+    else customSet(initialValue, null, true)
     if (initFunction) {
       try {
         await initFunction(value, previousValue, customSet, reset)
@@ -319,7 +319,7 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
   async function initializeStore() {
     const { value, previousValue } = await getValue()
     if (value !== null) customSet(value, previousValue, true)
-    else customSet(initialValue)
+    else customSet(initialValue, null, true)
     if (initFunction) {
       try {
         await initFunction(value, previousValue, customSet, reset)
