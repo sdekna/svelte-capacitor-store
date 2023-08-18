@@ -1,26 +1,38 @@
-import { writable, type Writable } from "svelte/store";
+import IndexedDBWrapper from './indexeddb-wrapper'
 import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
 
 const isDeviceNative = Capacitor.isNativePlatform();
 
+let indexedbInitialized = false
+let indexedDbWrapper: IndexedDBWrapper
+
+
 export type ArrayStoreInputType<T> = {
   storeName: string,
   initialValue: T,
+  noDuplication?: boolean,
+  persist?: boolean,
   initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
   validationStatement?: (value: NonNullable<T>) => boolean,
-  persist?: boolean,
-  noDuplication?: boolean,
+  browserStorage?: 'localStorage' | 'indexedDB'
 }
 
-export function arrayStore<T>({ storeName, persist, initialValue, noDuplication, initFunction, validationStatement }: ArrayStoreInputType<T>) {
+export function arrayStore<T>({ storeName, noDuplication, persist, initialValue, browserStorage = 'indexedDB', initFunction, validationStatement }: ArrayStoreInputType<T>) {
 
+  if (browserStorage === 'indexedDB' && !indexedDbWrapper && typeof window !== 'undefined') {
+    if (!window?.indexedDB) browserStorage = 'localStorage'
+    else {
+      indexedDbWrapper = new IndexedDBWrapper('persistance-database', 'main-store')
+      indexedDbWrapper.init().then(() => (indexedbInitialized = true))
+    }
+  }
   let currentValue: T = initialValue
-  let previousValue: T = initialValue;
+  let previousValue: T | null = initialValue;
 
-  const subscribers = new Set<(value: T, previousValue: T) => void>();
+  const subscribers = new Set<(value: T, previousValue: T | null) => void>();
 
-  const { set } = writable(initialValue) as Writable<T>;
+  // const { set } = writable(initialValue) as Writable<T>;
 
   async function getValue(): Promise<{ value: T, previousValue: T | null } | { value: null, previousValue: null }> {
     try {
@@ -35,6 +47,11 @@ export function arrayStore<T>({ storeName, persist, initialValue, noDuplication,
       }
       else if (isDeviceNative) {
         const { value, previousValue } = await getCapacitorStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
+      } else if (browserStorage === 'indexedDB') {
+        if (!indexedbInitialized) await indexedDbWrapper.init()
+        const { value, previousValue } = await getIndexedDBStore<T>(storeName)
         storedPreviousValue = previousValue
         storedValue = value
       } else {
@@ -53,39 +70,74 @@ export function arrayStore<T>({ storeName, persist, initialValue, noDuplication,
 
   }
 
-  const customSet = (value: T, storedPreviousValue?: T | null, initialization?: boolean): void => {
-    if (typeof window === 'undefined' || !Array.isArray(value) || !value.length) return
-    if (noDuplication && !initialization && areArraysEqual(value, currentValue)) return
+  const set = (value: T): void => {
+    if (typeof window === 'undefined' || !Array.isArray(value)) return
+
+    if (noDuplication && currentValue && areArraysEqual(value, currentValue)) return
+
     if (validationStatement && !validationStatement(value)) return
 
-    set(value);
-
-    previousValue = storedPreviousValue ?? currentValue;
+    previousValue = currentValue;
     currentValue = value;
-    if (persist) persistStore(storeName, value, previousValue)
+    if (persist) persistStore(storeName, value, previousValue, browserStorage)
 
-    subscribers.forEach((callback) => {
-      callback(value, previousValue);
-    });
+    broadcastValue(value, previousValue)
   };
 
-  async function initializeStore() {
-    const { value, previousValue } = await getValue()
-    if (Array.isArray(value)) customSet(value, previousValue, true)
-    else customSet(initialValue, null, true)
+  async function init() {
+    if (typeof window === 'undefined' || !persist) return
+    if (browserStorage === 'indexedDB' && !indexedbInitialized) {
+      if (!window?.indexedDB) browserStorage = 'localStorage'
+      else {
+        await indexedDbWrapper.init()
+        indexedbInitialized = true
+      }
+    }
+
+    let storedValue: T | null
+    let storedPreviousValue: T | null
+
+    {
+      const { value, previousValue } = await getValue()
+      storedValue = value
+      storedPreviousValue = previousValue
+    }
+
+    if (browserStorage === 'indexedDB' && storedValue == null && storedPreviousValue == null) {
+      const { value, previousValue } = getLocalStorageStore<T>(storeName)
+
+      if (Array.isArray(value) && (!validationStatement || (validationStatement && validationStatement(value)))) {
+        persistStore(storeName, value, previousValue, browserStorage)
+        localStorage.removeItem(storeName);
+      }
+
+      storedValue = value
+      storedPreviousValue = previousValue
+    }
+
+    const initialSetValue = !validationStatement && Array.isArray(storedValue) ? storedValue
+      : validationStatement && Array.isArray(storedValue) && validationStatement(storedValue) ? storedValue
+        : initialValue
+
+
+    currentValue = initialSetValue
+
+    if (storedPreviousValue !== null) previousValue = storedPreviousValue
+
+    broadcastValue(initialSetValue, previousValue)
+
     if (initFunction) {
       try {
-        await initFunction(value, previousValue, customSet, reset)
+        await initFunction(storedValue, previousValue, set, reset)
       } catch (error) {
         console.error(error)
       }
     }
   }
 
-  initializeStore()
+  init()
 
-  const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
-    if (typeof window === 'undefined') return () => { }
+  const subscribe = (callback: (value: T, previousValue: T | null) => void) => {
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -94,34 +146,40 @@ export function arrayStore<T>({ storeName, persist, initialValue, noDuplication,
     };
   };
 
-  const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
-    if (typeof window === 'undefined') return
-    const newValue = callback(currentValue, previousValue);
-    if (Array.isArray(newValue)) customSet(newValue)
+  const update = (callback: (value: T, previousValue: T | null) => T): void => {
+    const newValue = callback(structuredClone(currentValue), previousValue);
+    if (Array.isArray(newValue)) set(newValue)
   };
 
 
   function reset() {
     if (typeof window === 'undefined') return
-    set(initialValue)
+    // set(initialValue)
 
     previousValue = currentValue;
     currentValue = initialValue;
 
-    if (persist) persistStore(storeName, initialValue, previousValue)
-    subscribers.forEach((callback) => {
-      callback(initialValue, previousValue);
-    });
+    if (persist) persistStore(storeName, initialValue, previousValue, browserStorage)
+
+    broadcastValue(initialValue, previousValue)
   }
 
+  function broadcastValue(value: T, previousValue: T | null) {
+    subscribers.forEach((callback) => {
+      callback(value, previousValue);
+    });
+  }
+  function get() {
+    return currentValue
+  }
   return {
-    reset,
     getValue,
-    set: customSet,
-    update: customUpdate,
-    init: initializeStore,
-    subscribe: customSubscribe,
-
+    subscribe,
+    update,
+    reset,
+    init,
+    get,
+    set,
   }
 }
 
@@ -130,20 +188,26 @@ export function arrayStore<T>({ storeName, persist, initialValue, noDuplication,
 export type ObjectStoreInputType<T> = {
   storeName: string,
   initialValue: T,
-  persist?: boolean
   noDuplication?: boolean,
+  persist?: boolean
   validationStatement?: (value: NonNullable<T>) => boolean,
   initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
+  browserStorage?: 'localStorage' | 'indexedDB'
 }
 
-export function objectStore<T>({ storeName, initialValue, initFunction, validationStatement, persist, noDuplication }: ObjectStoreInputType<T>) {
+export function objectStore<T>({ storeName, noDuplication, initialValue, browserStorage = 'indexedDB', initFunction, validationStatement, persist }: ObjectStoreInputType<T>) {
 
+  if (browserStorage === 'indexedDB' && !indexedDbWrapper && typeof window !== 'undefined') {
+    if (!window?.indexedDB) browserStorage = 'localStorage'
+    else {
+      indexedDbWrapper = new IndexedDBWrapper('persistance-database', 'main-store')
+      indexedDbWrapper.init().then(() => (indexedbInitialized = true))
+    }
+  }
   let currentValue: T = initialValue
-  let previousValue: T = initialValue;
+  let previousValue: T | null = initialValue;
 
-  const subscribers = new Set<(value: T, previousValue: T) => void>();
-
-  const { set } = writable(initialValue) as Writable<T>;
+  const subscribers = new Set<(value: T, previousValue: T | null) => void>();
 
   async function getValue(): Promise<{ value: T, previousValue: T | null } | { value: null, previousValue: null }> {
     try {
@@ -160,6 +224,11 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
         storedPreviousValue = previousValue
         storedValue = value
 
+      } else if (browserStorage === 'indexedDB') {
+        if (!indexedbInitialized) await indexedDbWrapper.init()
+        const { value, previousValue } = await getIndexedDBStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
       } else {
         const { value, previousValue } = getLocalStorageStore<T>(storeName)
         storedPreviousValue = previousValue
@@ -177,38 +246,72 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 
   }
 
-  const customSet = (value: T, storedPreviousValue?: T | null, initialization?: boolean): void => {
+  const set = (value: T): void => {
     if (typeof window === 'undefined' || !value) return
-    if (noDuplication && !initialization && areObjectsEqual(value, currentValue)) return
+
+    if (noDuplication && currentValue && areObjectsEqual(value, currentValue)) return
     if (validationStatement && !validationStatement(value)) return
-    set(value);
 
-    previousValue = storedPreviousValue ?? currentValue;
+    previousValue = currentValue;
     currentValue = value;
-    if (persist) persistStore(storeName, value, previousValue)
+    if (persist) persistStore(storeName, value, previousValue, browserStorage)
 
-    subscribers.forEach((callback) => {
-      callback(currentValue, previousValue);
-    });
+    broadcastValue(currentValue, previousValue)
   };
 
-  async function initializeStore() {
-    const { value, previousValue } = await getValue()
-    if (value) customSet(value, previousValue, true)
-    else customSet(initialValue, null, true)
+  async function init() {
+    if (typeof window === 'undefined' || !persist) return
+    if (browserStorage === 'indexedDB' && !indexedbInitialized) {
+      if (!window?.indexedDB) browserStorage = 'localStorage'
+      else {
+        await indexedDbWrapper.init()
+        indexedbInitialized = true
+      }
+    }
+
+    let storedValue: T | null
+    let storedPreviousValue: T | null
+
+    {
+      const { value, previousValue } = await getValue()
+      storedValue = value
+      storedPreviousValue = previousValue
+    }
+
+    if (browserStorage === 'indexedDB' && storedValue == null && storedPreviousValue == null) {
+      const { value, previousValue } = getLocalStorageStore<T>(storeName)
+
+      if (value && (!validationStatement || (validationStatement && validationStatement(value)))) {
+        persistStore(storeName, value, previousValue, browserStorage)
+        localStorage.removeItem(storeName);
+      }
+
+      storedValue = value
+      storedPreviousValue = previousValue
+    }
+
+    const initialSetValue = !validationStatement && storedValue ? storedValue
+      : validationStatement && storedValue && validationStatement(storedValue) ? storedValue
+        : initialValue
+
+    currentValue = initialSetValue
+
+    if (storedPreviousValue !== null) previousValue = storedPreviousValue
+
+    broadcastValue(initialSetValue, previousValue)
+
     if (initFunction) {
       try {
-        await initFunction(value, previousValue, customSet, reset)
+        await initFunction(initialSetValue, previousValue, set, reset)
       } catch (error) {
         console.error(error)
       }
     }
   }
 
-  initializeStore()
+  init()
 
-  const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
-    if (typeof window === 'undefined') return () => { }
+  const subscribe = (callback: (value: T, previousValue: T | null) => void) => {
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -217,35 +320,39 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
     };
   };
 
-  const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
-    if (typeof window === 'undefined') return
-    const newValue = callback(currentValue, previousValue);
-    if (newValue) customSet(newValue)
+  const update = (callback: (value: T, previousValue: T | null) => T): void => {
+    const newValue = callback(structuredClone(currentValue), previousValue);
+    if (newValue) set(newValue)
   };
 
 
   function reset() {
     if (typeof window === 'undefined') return
-    set(initialValue)
 
     previousValue = currentValue;
     currentValue = initialValue;
+    if (persist) persistStore(storeName, initialValue, previousValue, browserStorage)
 
-    if (persist) persistStore(storeName, initialValue, previousValue)
-    subscribers.forEach((callback) => {
-      callback(initialValue, previousValue);
-    });
+    broadcastValue(initialValue, previousValue)
   }
 
 
+  function broadcastValue(value: T, previousValue: T | null) {
+    subscribers.forEach((callback) => {
+      callback(value, previousValue);
+    });
+  }
+  function get() {
+    return currentValue
+  }
   return {
-    subscribe: customSubscribe,
-    init: initializeStore,
-    update: customUpdate,
-    set: customSet,
     getValue,
+    subscribe,
+    update,
     reset,
-
+    init,
+    get,
+    set,
   }
 }
 
@@ -253,21 +360,27 @@ export function objectStore<T>({ storeName, initialValue, initFunction, validati
 export type VariableStoreInputType<T> = {
   storeName: string,
   initialValue: T,
+  noDuplication?: boolean,
   validationStatement?: (value: NonNullable<T>) => boolean,
   persist?: boolean,
   initFunction?: (currentValue: T | null, previousValue: T | null, set: (this: void, value: T) => void, reset: () => void) => Promise<void>,
-  noDuplication?: boolean,
+  browserStorage?: 'localStorage' | 'indexedDB'
+
 }
 
-export function variableStore<T>({ storeName, initialValue, initFunction, validationStatement, persist, noDuplication }: VariableStoreInputType<T>) {
+export function variableStore<T>({ storeName, noDuplication, initialValue, browserStorage = 'indexedDB', initFunction, validationStatement, persist }: VariableStoreInputType<T>) {
 
+  if (browserStorage === 'indexedDB' && !indexedDbWrapper && typeof window !== 'undefined') {
+    if (!window?.indexedDB) browserStorage = 'localStorage'
+    else {
+      indexedDbWrapper = new IndexedDBWrapper('persistance-database', 'main-store')
+      indexedDbWrapper.init().then(() => (indexedbInitialized = true))
+    }
+  }
   let currentValue: T = initialValue
-  let previousValue = initialValue;
+  let previousValue: T | null = initialValue;
 
-  const subscribers = new Set<(value: T, previousValue: T) => void>();
-
-  const { set } = writable(initialValue) as Writable<T>;
-
+  const subscribers = new Set<(value: T, previousValue: T | null) => void>();
 
   async function getValue(): Promise<{ value: T, previousValue: T | null } | { value: null, previousValue: null }> {
     try {
@@ -284,13 +397,18 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
         storedPreviousValue = previousValue
         storedValue = value
 
+      } else if (browserStorage === 'indexedDB') {
+        if (!indexedbInitialized) await indexedDbWrapper.init()
+        const { value, previousValue } = await getIndexedDBStore<T>(storeName)
+        storedPreviousValue = previousValue
+        storedValue = value
       } else {
         const { value, previousValue } = getLocalStorageStore<T>(storeName)
         storedPreviousValue = previousValue
         storedValue = value
       }
 
-      if (storedValue !== null && storedValue !== undefined) return { value: storedValue, previousValue: storedPreviousValue }
+      if (storedValue != null) return { value: storedValue, previousValue: storedPreviousValue }
 
       return { value: null, previousValue: null }
 
@@ -300,39 +418,73 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
     }
   }
 
-  const customSet = (value: T, storedPreviousValue?: T | null, initialization?: boolean): void => {
-    if (typeof window === 'undefined' || value === null || value === undefined) return
-    if (noDuplication && !initialization && value === currentValue) return
-    if (validationStatement && !validationStatement(value)) return
 
-    set(value);
 
-    previousValue = storedPreviousValue ?? currentValue;
+  const set = (value: T): void => {
+    if (typeof window === 'undefined' || value == null) return
+    if (noDuplication && currentValue !== null && value === currentValue) return
+
+    previousValue = currentValue;
     currentValue = value;
-    if (persist) persistStore(storeName, value, previousValue)
+    if (persist) persistStore(storeName, value, previousValue, browserStorage)
 
-    subscribers.forEach((callback) => {
-      callback(value, previousValue);
-    });
+    broadcastValue(value, previousValue)
   };
 
-  async function initializeStore() {
-    const { value, previousValue } = await getValue()
-    if (value !== null) customSet(value, previousValue, true)
-    else customSet(initialValue, null, true)
+  async function init() {
+    if (typeof window === 'undefined' || !persist) return
+    if (browserStorage === 'indexedDB' && !indexedbInitialized) {
+      if (!window?.indexedDB) browserStorage = 'localStorage'
+      else {
+        await indexedDbWrapper.init()
+        indexedbInitialized = true
+      }
+    }
+
+    let storedValue: T | null
+    let storedPreviousValue: T | null
+
+    {
+      const { value, previousValue } = await getValue()
+      storedValue = value
+      storedPreviousValue = previousValue
+    }
+
+    if (browserStorage === 'indexedDB' && storedValue == null && storedPreviousValue == null) {
+      const { value, previousValue } = getLocalStorageStore<T>(storeName)
+
+      if (value != null && (!validationStatement || (validationStatement && validationStatement(value)))) {
+        persistStore(storeName, value, previousValue, browserStorage)
+        localStorage.removeItem(storeName);
+      }
+
+      storedValue = value
+      storedPreviousValue = previousValue
+    }
+
+
+    const initialSetValue = !validationStatement && storedValue != null ? storedValue
+      : validationStatement && storedValue != null && validationStatement(storedValue) ? storedValue
+        : initialValue
+
+    currentValue = initialSetValue
+
+    if (storedPreviousValue !== null) previousValue = storedPreviousValue
+
+    broadcastValue(initialSetValue, previousValue)
+
     if (initFunction) {
       try {
-        await initFunction(value, previousValue, customSet, reset)
+        await initFunction(storedValue, previousValue, set, reset)
       } catch (error) {
         console.error(error)
       }
     }
   }
 
-  initializeStore()
+  init()
 
-  const customSubscribe = (callback: (value: T, previousValue: T) => void) => {
-    if (typeof window === 'undefined') return () => { }
+  const subscribe = (callback: (value: T, previousValue: T | null) => void) => {
     subscribers.add(callback);
     callback(currentValue, previousValue);
 
@@ -341,39 +493,60 @@ export function variableStore<T>({ storeName, initialValue, initFunction, valida
     };
   };
 
-  const customUpdate = (callback: (value: T, previousValue: T) => T): void => {
-    const newValue = callback(currentValue, previousValue);
-    customSet(newValue)
+  const update = (callback: (value: T, previousValue: T | null) => T): void => {
+    const newValue = callback(structuredClone(currentValue), previousValue);
+    if (newValue != null) set(newValue)
   };
 
 
   function reset() {
     if (typeof window === 'undefined') return
-    set(initialValue)
 
     previousValue = currentValue;
     currentValue = initialValue;
 
-    if (persist) persistStore(storeName, initialValue, previousValue)
-    subscribers.forEach((callback) => {
-      callback(initialValue, previousValue);
-    });
+    if (persist) persistStore(storeName, initialValue, previousValue, browserStorage)
+    broadcastValue(initialValue, previousValue)
   }
 
+
+  function broadcastValue(value: T, previousValue: T | null) {
+    subscribers.forEach((callback) => {
+      callback(value, previousValue);
+    });
+  }
+  function get() {
+    return currentValue
+  }
   return {
-    subscribe: customSubscribe,
-    init: initializeStore,
-    update: customUpdate,
-    set: customSet,
     getValue,
+    subscribe,
+    update,
     reset,
+    init,
+    set,
+    get,
   }
 }
 
 
-async function persistStore<T>(key: string, value: T, previousValue: T) {
+async function persistStore<T>(key: string, value: T, previousValue: T, browserStorage: 'localStorage' | 'indexedDB') {
   if (isDeviceNative) await setCapacitorStore<T>({ key, value, previousValue })
+  else if (browserStorage === 'indexedDB') await setIndexedDBStore<T>({ key, value, previousValue })
   else setLocalStorageStore<T>({ key, value, previousValue })
+}
+
+async function getIndexedDBStore<T>(key: string): Promise<{ value: T | null, previousValue: T | null }> {
+  const document = await indexedDbWrapper.get<T>(key)
+  if (!document) return { value: null, previousValue: null }
+  const { value, previousValue } = document
+  return { value, previousValue }
+}
+
+async function setIndexedDBStore<T>({ key, value, previousValue }: { key: string, value: T, previousValue: T }) {
+  const insertDocument = { id: key, value, previousValue };
+  console.log({ type: 'set', store: key, insertDocument })
+  return indexedDbWrapper.set<T>(insertDocument)
 }
 
 
@@ -429,6 +602,7 @@ async function setCapacitorStore<T>({ key, value, previousValue }: { key: string
     // console.error(`Error at setCapacitorStore function, key: ${key}.`, { error });
   }
 }
+
 
 function areObjectsEqual(object1: any, object2: any): boolean {
   if (typeof object1 !== typeof object2) return false;
