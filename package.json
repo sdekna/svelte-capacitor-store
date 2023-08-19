@@ -1,12 +1,12 @@
 {
   "name": "svelte-capacitor-store",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "main": "src/index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "npx tsc"
   },
-  "keywords": ["svelte", "capacitor", "svelte-store", "storage"],
+  "keywords": ["svelte", "capacitor", "svelte-store", "state-management", "reactivity", "indexeddb", "localStorage"],
   "author": "",
   "license": "ISC",
   "description": "A whole new svelte stores implementation that persists its values using capacitor storage on native devices, and indexedDB/localStorage otherwise.",

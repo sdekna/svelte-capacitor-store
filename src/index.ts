@@ -86,7 +86,7 @@ export function arrayStore<T>({ storeName, noDuplication, persist, initialValue,
 
   async function init() {
     if (typeof window === 'undefined' || !persist) return
-    if (browserStorage === 'indexedDB' && !indexedbInitialized) {
+    if (!isDeviceNative && browserStorage === 'indexedDB' && !indexedbInitialized) {
       if (!window?.indexedDB) browserStorage = 'localStorage'
       else {
         await indexedDbWrapper.init()
@@ -103,7 +103,7 @@ export function arrayStore<T>({ storeName, noDuplication, persist, initialValue,
       storedPreviousValue = previousValue
     }
 
-    if (browserStorage === 'indexedDB' && storedValue == null && storedPreviousValue == null) {
+    if (!isDeviceNative && browserStorage === 'indexedDB' && storedValue == null && storedPreviousValue == null) {
       const { value, previousValue } = getLocalStorageStore<T>(storeName)
 
       if (Array.isArray(value) && (!validationStatement || (validationStatement && validationStatement(value)))) {

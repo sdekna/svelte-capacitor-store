@@ -1,7 +1,10 @@
 #### update: 0.3.0 (major - non-breaking):
-- Build-in svelte stores creation and operation logic can be restrictive especially when dealing with async operations, so the store was built from scratch up with all this in mind, thus, the stores now behave the same as built-in svelte, but with completely different creation/operation logic.
-- Non-native browser storage now defaults to `IndexedDB` for improved and non-blocking performance. Each store is now stored in an `indexedDB` document. Could be set to `localStorage` via the `browserStorage` option.
+-  Build-in svelte stores creation and operation logic can be restrictive especially when dealing with async operations, thus built-in svelte-stores were ditched entirely and opted for more tuned and specialized implementation, while behaving/used the same as built-in stores.
+
+- Optimized Non-Native Browser Storage: For better performance and reduced blocking, non-native browser storage now defaults to using `IndexedDB`. Each store is stored in a separate indexedDB document providing a non-blocking performance boost for reads and writes. Should you prefer a different approach. Could be set to `localStorage` via the `browserStorage` option.
+
 - To avoid any breaking changes, an automatic migration logic is introduced. In non-native devices, during store initialization, if the value could not be retrieved from `indexedDB`, the store will try to retrieve it from `localStorage`, if it exists, it will migrate it to `indexedDB` then delete the `localStorage` record.
+
 - a new method (sync) `store.get()` now returns the store value synchronously, which is much more performant than the standard `get(store)` (though it could still be used), and eliminates unnecessary and possibly costly subscribe and unsubscribe.
 
 #### update: 0.2.3: 
