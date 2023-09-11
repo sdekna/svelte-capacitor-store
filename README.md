@@ -1,4 +1,4 @@
-#### update: 0.3.3:
+#### update: 0.3.33:
 - Apart from capacitor dependencies, the library is now free of any dependencies.
 - Library is compiled to js with types. Typescript is not a required dependency anymore.
 

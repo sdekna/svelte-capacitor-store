@@ -545,7 +545,6 @@ async function getIndexedDBStore<T>(key: string): Promise<{ value: T | null, pre
 
 async function setIndexedDBStore<T>({ key, value, previousValue }: { key: string, value: T, previousValue: T }) {
   const insertDocument = { id: key, value, previousValue };
-  console.log({ type: 'set', store: key, insertDocument })
   return indexedDbWrapper.set<T>(insertDocument)
 }
 
