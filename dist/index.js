@@ -622,7 +622,6 @@ function setIndexedDBStore(_a) {
         var insertDocument;
         return __generator(this, function (_b) {
             insertDocument = { id: key, value: value, previousValue: previousValue };
-            console.log({ type: 'set', store: key, insertDocument: insertDocument });
             return [2 /*return*/, indexedDbWrapper.set(insertDocument)];
         });
     });
