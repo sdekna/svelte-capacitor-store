@@ -1,4 +1,4 @@
-#### update: 0.3.4:
+#### update: 0.3.5:
 - Apart from capacitor dependencies, the library is now free of any dependencies.
 - Library is compiled to js with types for reduced size for production cases.
 
