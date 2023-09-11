@@ -9,13 +9,15 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
-		"sourceMap": true,
+		// "sourceMap": true,
 		"strict": true,
 		"noImplicitAny": false,
+    "declaration": true,
 	},
     "include": [
-      "./*.ts" // Replace with your source files' directory
-, "src/index.ts"  ]
+      "src/*.ts", // Replace with your source files' directory
+ 			// "src/index.ts"
+		]
 
 	// Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
 	//

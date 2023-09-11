@@ -1,3 +1,7 @@
+#### update: 0.3.3:
+- Apart from capacitor dependencies, the library is now free of any dependencies.
+- Library is compiled to js with types. Typescript is not a required dependency anymore.
+
 #### update: 0.3.0 (major - non-breaking):
 -  Build-in svelte stores creation and operation logic can be restrictive especially when dealing with async operations, thus built-in svelte-stores were ditched entirely and opted for more tuned and specialized implementation, while behaving/used the same as built-in stores.
 
